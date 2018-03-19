@@ -3,8 +3,8 @@
 
 xdata uint8_t I2C_Buf;
 
-SBIT(sda_pin,	0x90, 5);
-SBIT(scl_pin,	0x90, 4);
+SBIT(sda_pin,	0x90, 7);
+SBIT(scl_pin,	0x90, 6);
 //sbit sda_pin = P1^5;
 //sbit scl_pin = P1^4;
 

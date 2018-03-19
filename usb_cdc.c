@@ -17,8 +17,8 @@ idata uint8_t  Receive_Uart_Buf[UART_REV_LEN];
 idata volatile uint8_t Uart_Input_Point = 0;   //循环缓冲区写入指针，总线复位需要初始化为0
 idata volatile uint8_t Uart_Output_Point = 0;  //循环缓冲区取出指针，总线复位需要初始化为0
 idata volatile uint8_t UartByteCount = 0;	  //当前缓冲区剩余待取字节数
-idata volatile uint8_t USBByteCount = 0;	  //代表USB端点接收到的数据
-idata volatile uint8_t USBBufOutPoint = 0;	//取数据指针
+idata volatile uint8_t CDC_PendingRxByte = 0;	  //代表USB端点接收到的数据
+idata volatile uint8_t CDC_CurRxPos = 0;	//取数据指针
 idata volatile uint8_t UpPoint2_Busy  = 0;   //上传端点是否忙标志
 uint32_t CDC_Baud = 0;
 
@@ -38,8 +38,8 @@ void USB_EP2_OUT(void) {
 	if (!U_TOG_OK )
 		return;
 
-	USBByteCount = USB_RX_LEN;
-	USBBufOutPoint = 0;											 //取数据指针复位
+	CDC_PendingRxByte = USB_RX_LEN;
+	CDC_CurRxPos = 0;											 //取数据指针复位
 	UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_R_RES | UEP_R_RES_NAK;	   //收到一包数据就NAK，主函数处理完，由主函数修改响应方式
 }
 
@@ -65,7 +65,7 @@ void CDC_SetBaud(void) {
 		CDC_Baud = 57600;
 }
 
-void virtual_uart_tx(uint8_t tdata) {
+void CDC_PutChar(uint8_t tdata) {
 	Receive_Uart_Buf[Uart_Input_Point++] = tdata;
 	UartByteCount++;					//当前缓冲区剩余待取字节数
 	if(Uart_Input_Point>=UART_REV_LEN)
@@ -74,10 +74,10 @@ void virtual_uart_tx(uint8_t tdata) {
 	}
 }
 
-void v_uart_puts(char *str)
+void CDC_Puts(char *str)
 {
 	while(*str)
-		virtual_uart_tx(*(str++));
+		CDC_PutChar(*(str++));
 }
 
 void usb_poll()
@@ -100,7 +100,7 @@ void usb_poll()
 						length = UART_REV_LEN-Uart_Output_Point;
 					UartByteCount -= length;
 					//写上传端点
-					memcpy(Ep2Buffer+MAX_PACKET_SIZE,&Receive_Uart_Buf[Uart_Output_Point],length);
+					memcpy(EP2_TX_BUF, &Receive_Uart_Buf[Uart_Output_Point],length);
 					Uart_Output_Point+=length;
 					if(Uart_Output_Point>=UART_REV_LEN)
 						Uart_Output_Point = 0;
@@ -116,95 +116,76 @@ void usb_poll()
 
 void uart_poll()
 {/* 串口 处理程序 */
-	uint8_t uart_data;
-	uint8_t i2c_ack = 0;
-//	static bool i2c_status = 0;
+	uint8_t cur_byte;
 	static uint8_t i2c_frame_len = 0;
 	static uint8_t i2c_frame_rx_len = 0;
 	static uint8_t i2c_error_no = 0;
-	static uint8_t uart_rx_status = 0;
+	static uint8_t cdc_rx_state = 0;
 	static uint8_t former_data = 0;
 	static uint8_t dontstop = 0;
 	uint8_t i;
 
-	if(USBByteCount)   //USB接收端点有数据
-	{
-		uart_data = Ep2Buffer[USBBufOutPoint++];
+	// If there are data pending
+	if(CDC_PendingRxByte) {
+		cur_byte = EP2_RX_BUF[CDC_CurRxPos++];
 
-		if(uart_rx_status == 0)
-		{
-			if(uart_data == 'Q')
-			{
-				v_uart_puts(SI5351_ReferenceClock); /* 26MHz Crystal */
-				v_uart_puts("\r\n");
-			}
-			else if(uart_data == 'V')
-			{ /* Version */
-				v_uart_puts(Device_Version); /* Device version */
-				v_uart_puts("\r\n");
-			}
-			else if(uart_data == 'E')
-			{
+		if(cdc_rx_state == CDC_STATE_IDLE)	{
+			if(cur_byte == 'Q')	{
+				CDC_Puts(SI5351_ReferenceClock); /* 26MHz Crystal */
+				CDC_Puts("\r\n");
+			} else if(cur_byte == 'V') { /* Version */
+				CDC_Puts(Device_Version); /* Device version */
+				CDC_Puts("\r\n");
+			} else if(cur_byte == 'E') {
 				JumpToBootloader();
-
-			}
-			else if(uart_data == 'B')
-			{
-				virtual_uart_tx(CDC_Baud / 100000 + '0');
-				virtual_uart_tx(CDC_Baud % 100000 / 10000 + '0');
-				virtual_uart_tx(CDC_Baud % 10000 / 1000 + '0');
-				virtual_uart_tx(CDC_Baud % 1000 / 100 + '0');
-				virtual_uart_tx(CDC_Baud % 100 / 10 + '0');
-				virtual_uart_tx(CDC_Baud % 10 / 1 + '0');
-				v_uart_puts("\r\n");
-			}
-			else if(uart_data == 'T' && former_data != 'A') /* BAN AT commands */
-			{ /* Transmit I2C Data: T: <LEN>, 16bytes data, performing S, <AR>, <DAT>, E */
-
+			} else if(cur_byte == 'B') {
+				CDC_PutChar(CDC_Baud / 100000 + '0');
+				CDC_PutChar(CDC_Baud % 100000 / 10000 + '0');
+				CDC_PutChar(CDC_Baud % 10000 / 1000 + '0');
+				CDC_PutChar(CDC_Baud % 1000 / 100 + '0');
+				CDC_PutChar(CDC_Baud % 100 / 10 + '0');
+				CDC_PutChar(CDC_Baud % 10 / 1 + '0');
+				CDC_Puts("\r\n");
+			} else if(cur_byte == 'T' && former_data != 'A') { /* BAN AT commands */
+				// Transmit I2C Data: T: <LEN>, 16bytes data, performing S, <AR>, <DAT>, E
 				i2c_frame_rx_len = 0;
-				uart_rx_status = 1;
+				cdc_rx_state = CDC_STATE_I2C_TXSTART;
 				i2c_error_no = 0;
 				i2c_frame_len = 0;
-			}
-			else if(uart_data == 'R')
-			{ /* Recieve I2C Data: R<AR><LEN> */
+			} else if(cur_byte == 'R') {
+				// Recieve I2C Data: R<AR><LEN>
 				i2c_frame_rx_len = 0;
-				uart_rx_status = 3;
+				cdc_rx_state = CDC_STATE_I2C_RXSTART;
 				i2c_error_no = 0;
 				i2c_frame_len = 0;
-			}
-			else if(uart_data == 'T' && former_data == 'A') /* BAN AT commands */
+			} else if(cur_byte == 'T' && former_data == 'A') /* BAN AT commands */
 			{
-				v_uart_puts("OK\r\n");
+				CDC_Puts("OK\r\n");
+			} else if(cur_byte == 'A') {
+
+			} else {
+				CDC_Puts("NOT SUPPORTED\r\n");
 			}
-			else if(uart_data == 'A')
-			{
-			}
-			else
-			{
-				v_uart_puts("NOT SUPPORTED\r\n");
-			}
-		}
-		else if(uart_rx_status == 1)
-		{ // 54	03	C0	02	53
-			i2c_frame_len = uart_data & 0x3f; /* 拿到长度 */
-			if(uart_data & 0x80)
+
+		} // if(CDC_PendingRxByte)
+
+		else if(cdc_rx_state == CDC_STATE_I2C_TXSTART) { // 54	03	C0	02	53
+			i2c_frame_len = cur_byte & 0x3f; /* 拿到长度 */
+			if(cur_byte & 0x80)
 				dontstop = 1;
 			else
 				dontstop = 0;
 
 			I2C_Send_Start();
-			uart_rx_status = 2;
+			cdc_rx_state = CDC_STATE_I2C_TXING;
 		}
-		else if(uart_rx_status == 2)
+		else if(cdc_rx_state == CDC_STATE_I2C_TXING)
 		{
 			if(i2c_error_no == 0)
 			{
-				I2C_Buf = uart_data;
+				I2C_Buf = cur_byte;
 				I2C_WriteByte();
-				i2c_ack = I2C_Buf;
-				if(i2c_ack != 1)
-				{
+				if(I2C_Buf) { // Received NAK
 					I2C_Send_Stop();
 					i2c_error_no = i2c_frame_rx_len + 1;
 				}
@@ -215,57 +196,58 @@ void uart_poll()
 			{
 				if(i2c_error_no == 0)
 				{
-					v_uart_puts("OK\r\n");
+					CDC_Puts("OK\r\n");
 					if(dontstop == 0)
 						I2C_Send_Stop(); /* 停止I2C */
 				}
 				else
 				{
-					virtual_uart_tx('F');
-					virtual_uart_tx(i2c_error_no / 10 + '0');
-					virtual_uart_tx(i2c_error_no % 10 + '0'); /* 传输失败 */
-					v_uart_puts("\r\n");
+					CDC_PutChar('F');
+					CDC_PutChar(i2c_error_no / 10 + '0');
+					CDC_PutChar(i2c_error_no % 10 + '0'); /* 传输失败 */
+					CDC_Puts("\r\n");
 				}
 
 				i2c_frame_len = 0;
 				i2c_frame_rx_len = 0;
-				uart_rx_status = 0;
+				cdc_rx_state = 0;
 				i2c_error_no = 0;
 			}
 
-		}
-		else if(uart_rx_status == 3)
-		{
+		} else if(cdc_rx_state == CDC_STATE_I2C_RXSTART) {
 			I2C_Send_Start();
-			I2C_Buf = uart_data;
+			I2C_Buf = cur_byte;
 			I2C_WriteByte();
-			i2c_ack = I2C_Buf;
-			if(i2c_ack != 1)
-			{
-				v_uart_puts("FAIL\r\n");
+			if(I2C_Buf) { // Received NAK
+				CDC_Puts("FAIL\r\n");
 				I2C_Send_Stop();
-				uart_rx_status = 0;
+				cdc_rx_state = 0;
 			}
-			uart_rx_status = 4;
-		}
-		else if(uart_rx_status == 4)
-		{
-			i2c_frame_len = uart_data & 0x3f;
-			for(i = 0; i < i2c_frame_len; i++)
-			{
+			cdc_rx_state = CDC_STATE_I2C_RXING;
+		} else if(cdc_rx_state == CDC_STATE_I2C_RXING) {
+			i2c_frame_len = cur_byte & 0x3f;
+			i2c_frame_len--;
+			for(i = 0; i < i2c_frame_len; i++) {
 				I2C_ReadByte();
-				virtual_uart_tx(I2C_Buf);
-				//if(i2c_ack != 1)
-					//break;
+				CDC_PutChar(I2C_Buf);
+				I2C_Send_ACK();
 			}
+			I2C_ReadByte();
+			CDC_PutChar(I2C_Buf);
+			I2C_Send_NACK();
+
 			I2C_Send_Stop();
-			uart_rx_status = 0;
+			cdc_rx_state = 0;
 		}
-		former_data = uart_data;
+		former_data = cur_byte;
 
-		USBByteCount--;
+		CDC_PendingRxByte--;
 
-		if(USBByteCount==0)
+		if(CDC_PendingRxByte==0)
 			UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_R_RES | UEP_R_RES_ACK;
 	}
 }
+
+// AT2402
+// Read first 5 byte: 54 82 A0 00 52 A1 05
+// Write first 5 byte: 54 07 A0 00 01 02 03 04 05

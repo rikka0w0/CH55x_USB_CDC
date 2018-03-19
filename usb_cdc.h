@@ -7,6 +7,13 @@
 #define  GET_LINE_CODING				0X21			// This request allows the host to find out the currently configured line coding.
 #define  SET_CONTROL_LINE_STATE			0X22			// This request generates RS-232/V.24 style control signals.
 
+#define CDC_STATE_IDLE 0
+#define CDC_STATE_I2C_TXSTART 1
+#define CDC_STATE_I2C_TXING 2
+#define CDC_STATE_I2C_RXSTART 3
+#define CDC_STATE_I2C_RXING 4
+
+
 #define LINECODING_ADDR 0xCA
 #define LINECODING_SIZE 7
 extern_xdatabuf(LINECODING_ADDR, LineCoding);
