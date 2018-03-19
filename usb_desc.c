@@ -7,15 +7,15 @@ code const uint8_t DevDesc[] = {
 	USB_DESCSIZE_DEVICE,	// Total length
 	0x01,				// Type: Device Descriptor
 	0x10, 0x01,	// USB Spec., 0x0110 -> USB 1.1
-	0x02,				// Class code, 00 - each interface defines its own class
+	0x00,				// Class code, 00 - each interface defines its own class
 	0x00,				// Device Subclass
 	0x00,				// Device Protocol
 	8,					// Max packet size
 	0x86, 0x1a,	// VID	0x413d
 	0x22, 0x57,	// PID	0x2107
 	0x00, 0x01,	// Device release number in BCD
-	0x04,				// Manufactor, index of string descriptor
-	0x03,				// Product string descriptor ID
+	0x02,				// Manufactor, index of string descriptor
+	0x01,				// Product string descriptor ID
 	0x00,				// Serial number (String descriptor ID) 
 	0x01				// Number of available configurations
 };
@@ -35,6 +35,15 @@ code const uint8_t CfgDesc[] =
 	0x80,				// Attributes, D7 must be 1, D6 Self-powered, D5 Remote Wakeup, D4-D0=0
 	0x32,				// Max current drawn by device, in units of 2mA
 
+	// Interface Association Descriptor (CDC)
+	8,					// Length of the descriptor
+	0x0B,				// Type: Interface Association Descriptor (IAD)
+	0x00, 				// First interface: 0 in this case, see following
+	0x02, 				// Total number of grouped interfaces
+	0x02, 				// bFunctionClass
+	0x02, 				// bFunctionSubClass
+	0x01, 				// bFunctionProtocol
+	0x03, 				// Index of string descriptor describing this function
 
 	// Interface descriptor (CDC)
 	9,					// Length of the descriptor
