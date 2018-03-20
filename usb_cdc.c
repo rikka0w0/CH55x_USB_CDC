@@ -2,6 +2,7 @@
 #include "usb_endp.h"
 #include <string.h>
 #include "i2c.h"
+#include "spi.h"
 #include "bootloader.h"
 
 #include "ch554_platform.h"
@@ -39,8 +40,9 @@ void USB_EP2_OUT(void) {
 		return;
 
 	CDC_PendingRxByte = USB_RX_LEN;
-	CDC_CurRxPos = 0;											 //取数据指针复位
-	UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_R_RES | UEP_R_RES_NAK;	   //收到一包数据就NAK，主函数处理完，由主函数修改响应方式
+	CDC_CurRxPos = 0;				// Reset Rx pointer
+	// Reject packets by replying NAK, until uart_poll() finishes its job, then it informs the USB peripheral to accept incoming packets
+	UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_R_RES | UEP_R_RES_NAK;
 }
 
 void CDC_InitBaud(void) {
@@ -74,8 +76,7 @@ void CDC_PutChar(uint8_t tdata) {
 	}
 }
 
-void CDC_Puts(char *str)
-{
+void CDC_Puts(char *str) {
 	while(*str)
 		CDC_PutChar(*(str++));
 }
@@ -114,22 +115,35 @@ void usb_poll()
 }
 
 
-void uart_poll()
-{/* 串口 处理程序 */
+void uart_poll() {
 	uint8_t cur_byte;
-	static uint8_t i2c_frame_len = 0;
-	static uint8_t i2c_frame_rx_len = 0;
-	static uint8_t i2c_error_no = 0;
+	static uint8_t former_data = 0; // Previous byte
 	static uint8_t cdc_rx_state = 0;
-	static uint8_t former_data = 0;
+
+	/*
+	 *	I2C Tx:
+	 *		bit7: If set, no stop condition will be generated at the end of current transfer
+	 *		rest bits: Unused
+	 *	I2C Rx:
+	 *		Inapplicable
+	 *	SPI Tx, Rx:
+	 *		bit7: If set, CS remains low after this transfer
+	 *		rest bits: Unused
+	 */
 	static uint8_t dontstop = 0;
-	uint8_t i;
+	static uint8_t frame_len = 0;
+
+	// Tx only
+	static uint8_t frame_sent = 0;
+
+	// I2C only
+	static uint8_t i2c_error_no = 0;
 
 	// If there are data pending
 	if(CDC_PendingRxByte) {
 		cur_byte = EP2_RX_BUF[CDC_CurRxPos++];
 
-		if(cdc_rx_state == CDC_STATE_IDLE)	{
+		if(cdc_rx_state == CDC_STATE_IDLE) {
 			if(cur_byte == 'Q')	{
 				CDC_Puts(SI5351_ReferenceClock); /* 26MHz Crystal */
 				CDC_Puts("\r\n");
@@ -146,20 +160,32 @@ void uart_poll()
 				CDC_PutChar(CDC_Baud % 100 / 10 + '0');
 				CDC_PutChar(CDC_Baud % 10 / 1 + '0');
 				CDC_Puts("\r\n");
-			} else if(cur_byte == 'T' && former_data != 'A') { /* BAN AT commands */
+			}
+
+			// I2C
+			else if(cur_byte == 'T' && former_data != 'A') { /* BAN AT commands */
 				// Transmit I2C Data: T: <LEN>, 16bytes data, performing S, <AR>, <DAT>, E
-				i2c_frame_rx_len = 0;
+				frame_sent = 0;
 				cdc_rx_state = CDC_STATE_I2C_TXSTART;
 				i2c_error_no = 0;
-				i2c_frame_len = 0;
+				frame_len = 0;
 			} else if(cur_byte == 'R') {
 				// Recieve I2C Data: R<AR><LEN>
-				i2c_frame_rx_len = 0;
+				frame_len = 0;
 				cdc_rx_state = CDC_STATE_I2C_RXSTART;
-				i2c_error_no = 0;
-				i2c_frame_len = 0;
-			} else if(cur_byte == 'T' && former_data == 'A') /* BAN AT commands */
-			{
+			}
+
+			// SPI
+			else if(cur_byte == 'S') {
+				frame_len = 0;
+				cdc_rx_state = CDC_STATE_SPI_TXSTART;
+			} else if (cur_byte == 'G') {
+				frame_len = 0;
+				cdc_rx_state = CDC_STATE_SPI_RXING;
+			}
+
+			else if(cur_byte == 'T' && former_data == 'A') {
+				/* BAN AT commands */
 				CDC_Puts("OK\r\n");
 			} else if(cur_byte == 'A') {
 
@@ -167,53 +193,48 @@ void uart_poll()
 				CDC_Puts("NOT SUPPORTED\r\n");
 			}
 
-		} // if(CDC_PendingRxByte)
+		} // if(cdc_rx_state == CDC_STATE_IDLE)
 
+		// I2C
 		else if(cdc_rx_state == CDC_STATE_I2C_TXSTART) { // 54	03	C0	02	53
-			i2c_frame_len = cur_byte & 0x3f; /* 拿到长度 */
-			if(cur_byte & 0x80)
-				dontstop = 1;
-			else
-				dontstop = 0;
+			frame_len = cur_byte & 0x3F;
+			dontstop = cur_byte & CDC_FLAG_NOSTOP;
 
 			I2C_Send_Start();
 			cdc_rx_state = CDC_STATE_I2C_TXING;
-		}
-		else if(cdc_rx_state == CDC_STATE_I2C_TXING)
-		{
+		} else if(cdc_rx_state == CDC_STATE_I2C_TXING) {
 			if(i2c_error_no == 0)
 			{
 				I2C_Buf = cur_byte;
 				I2C_WriteByte();
 				if(I2C_Buf) { // Received NAK
 					I2C_Send_Stop();
-					i2c_error_no = i2c_frame_rx_len + 1;
+					i2c_error_no = frame_sent + 1;
 				}
 			}
-			i2c_frame_rx_len ++;
+			frame_sent ++;
 
-			if(i2c_frame_len == i2c_frame_rx_len)
+			if(frame_len == frame_sent)
 			{
 				if(i2c_error_no == 0)
 				{
 					CDC_Puts("OK\r\n");
 					if(dontstop == 0)
-						I2C_Send_Stop(); /* 停止I2C */
+						I2C_Send_Stop();
 				}
 				else
 				{
-					CDC_PutChar('F');
+					CDC_PutChar('F');	// Transmission failed
 					CDC_PutChar(i2c_error_no / 10 + '0');
-					CDC_PutChar(i2c_error_no % 10 + '0'); /* 传输失败 */
+					CDC_PutChar(i2c_error_no % 10 + '0');
 					CDC_Puts("\r\n");
 				}
 
-				i2c_frame_len = 0;
-				i2c_frame_rx_len = 0;
-				cdc_rx_state = 0;
+				frame_len = 0;
+				frame_sent = 0;
+				cdc_rx_state = CDC_STATE_IDLE;
 				i2c_error_no = 0;
 			}
-
 		} else if(cdc_rx_state == CDC_STATE_I2C_RXSTART) {
 			I2C_Send_Start();
 			I2C_Buf = cur_byte;
@@ -221,13 +242,14 @@ void uart_poll()
 			if(I2C_Buf) { // Received NAK
 				CDC_Puts("FAIL\r\n");
 				I2C_Send_Stop();
-				cdc_rx_state = 0;
+				cdc_rx_state = CDC_STATE_IDLE;
 			}
 			cdc_rx_state = CDC_STATE_I2C_RXING;
 		} else if(cdc_rx_state == CDC_STATE_I2C_RXING) {
-			i2c_frame_len = cur_byte & 0x3f;
-			i2c_frame_len--;
-			for(i = 0; i < i2c_frame_len; i++) {
+			frame_len = cur_byte & 0x3f;
+			frame_len--;
+
+			while (frame_len--) {
 				I2C_ReadByte();
 				CDC_PutChar(I2C_Buf);
 				I2C_Send_ACK();
@@ -237,17 +259,64 @@ void uart_poll()
 			I2C_Send_NACK();
 
 			I2C_Send_Stop();
-			cdc_rx_state = 0;
+			cdc_rx_state = CDC_STATE_IDLE;
 		}
+
+		// SPI
+		else if (cdc_rx_state == CDC_STATE_SPI_TXSTART) {
+			frame_len = cur_byte & 0x3F;
+			dontstop = cur_byte & CDC_FLAG_NOSTOP;
+
+			// An SPI transfer starts with CS transit from H to L
+			// If the last transfer is not completed, CS is L
+			// So we always set CS to L here
+			SPI_SetCS(0);
+
+			cdc_rx_state = CDC_STATE_SPI_TXING;
+		} else if (cdc_rx_state == CDC_STATE_SPI_TXING) {
+			SPI_MasterData(cur_byte);
+
+			frame_sent++;
+			if(frame_len == frame_sent) {
+				if (!dontstop) {
+					// Set CS to H, terminate this transfer
+					SPI_SetCS(1);
+				}
+
+				frame_len = 0;
+				frame_sent = 0;
+				cdc_rx_state = CDC_STATE_IDLE;
+			}
+		} else if (cdc_rx_state == CDC_STATE_SPI_RXING) {
+			frame_len = cur_byte & 0x3F;
+			dontstop = cur_byte & CDC_FLAG_NOSTOP;
+
+			// SPI Rx must follow a Tx or Rx, therefore at this moment, normally CS should be L
+			while(frame_len--) {
+				CDC_PutChar(SPI_MasterData(0xFF));
+			}
+
+			if (!dontstop){
+				// Set CS to H, terminate this transfer
+				SPI_SetCS(1);
+			}
+
+			cdc_rx_state = CDC_STATE_IDLE;
+		}
+
 		former_data = cur_byte;
 
 		CDC_PendingRxByte--;
 
-		if(CDC_PendingRxByte==0)
+		if(CDC_PendingRxByte == 0)
 			UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_R_RES | UEP_R_RES_ACK;
-	}
+	} // if(CDC_PendingRxByte)
 }
 
 // AT2402
 // Read first 5 byte: 54 82 A0 00 52 A1 05
 // Write first 5 byte: 54 07 A0 00 01 02 03 04 05
+
+
+// 25Q64 (ID=EF 40 17)
+// Read ID: 53 81 9F 47 03

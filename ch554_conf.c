@@ -4,7 +4,7 @@
 #include "usb_desc.h"
 #include "usb_endp.h"
 #include "i2c.h"
-
+#include "spi.h"
 
 
 void ConfigSysClock() {
@@ -115,26 +115,29 @@ void CH554_Init(void) {
 	ConfigSysClock();
 	mDelaymS(5);	// Wait until the internal crystal becomes stable
 	
-	UART0_Init();
+	//UART0_Init();
 	I2C_Init();
+	SPI_SetMasterMode3();
+	SPI_SetMasterIOFloat();
+	SPI_SetClockDivider(100);
 	
 	USBDevice_Init();
   
 	EA = 1;
 }
 
-void putchar(char c) {
-    while (!TI) /* assumes UART is initialized */
-    ;
-    TI = 0;
-    SBUF = c;
-}
-
-char getchar() {
-    while(!RI); /* assumes UART is initialized */
-    RI = 0;
-    return SBUF;
-}
+//void putchar(char c) {
+//    while (!TI) /* assumes UART is initialized */
+//    ;
+//    TI = 0;
+//    SBUF = c;
+//}
+//
+//char getchar() {
+//    while(!RI); /* assumes UART is initialized */
+//    RI = 0;
+//    return SBUF;
+//}
 
 //void putchar(char data);
 //char getchar();

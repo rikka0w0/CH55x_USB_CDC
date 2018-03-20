@@ -1,15 +1,11 @@
 #include "Delay.H"
 #include "usb_cdc.h"
 
-
-#include <stdio.h>
 #include "ch554_platform.h"
 
 void main(void) {
 	CDC_InitBaud();
     CH554_Init();
-
-    printf("start ...\n");
 	
     while(1) {
     	usb_poll();
