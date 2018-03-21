@@ -8,8 +8,8 @@ void main(void) {
     CH554_Init();
 	
     while(1) {
-    	usb_poll();
-    	uart_poll();
+    	CDC_USB_Poll();
+    	CDC_UART_Poll();
     };
 }
 

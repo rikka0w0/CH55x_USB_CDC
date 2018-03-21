@@ -25,11 +25,11 @@ extern_xdatabuf(LINECODING_ADDR, LineCoding);
 extern uint32_t CDC_Baud;
 
 
-#define UART_REV_LEN  64
+#define CDC_PUTCHARBUF_LEN  64
 
 void CDC_InitBaud(void);
 void CDC_SetBaud(void);
-void usb_poll(void);
-void uart_poll(void);
+void CDC_USB_Poll(void);
+void CDC_UART_Poll(void);
 
 #endif

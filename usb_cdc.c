@@ -13,37 +13,20 @@ xdatabuf(LINECODING_ADDR, LineCoding, LINECODING_SIZE);
 #define SI5351_ReferenceClock	"26000000"
 #define Device_Version			"1.0.1"
 
+// CDC Tx
+idata uint8_t  CDC_PutCharBuf[CDC_PUTCHARBUF_LEN];	// The buffer for CDC_PutChar
+idata volatile uint8_t CDC_PutCharBuf_Last = 0;		// Point to the last char in the buffer
+idata volatile uint8_t CDC_PutCharBuf_First = 0;	// Point to the first char in the buffer
+idata volatile uint8_t CDC_PutCharBuf_Count = 0;	// The length of data stored in the buffer
+idata volatile uint8_t CDC_Tx_Busy  = 0;
+
+// CDC Rx
+idata volatile uint8_t CDC_Rx_Pending = 0;	// Number of bytes need to be processed before accepting more USB packets
+idata volatile uint8_t CDC_Rx_CurPos = 0;
+
+// CDC configuration
 extern uint8_t UsbConfig;
-idata uint8_t  Receive_Uart_Buf[UART_REV_LEN];
-idata volatile uint8_t Uart_Input_Point = 0;   //循环缓冲区写入指针，总线复位需要初始化为0
-idata volatile uint8_t Uart_Output_Point = 0;  //循环缓冲区取出指针，总线复位需要初始化为0
-idata volatile uint8_t UartByteCount = 0;	  //当前缓冲区剩余待取字节数
-idata volatile uint8_t CDC_PendingRxByte = 0;	  //代表USB端点接收到的数据
-idata volatile uint8_t CDC_CurRxPos = 0;	//取数据指针
-idata volatile uint8_t UpPoint2_Busy  = 0;   //上传端点是否忙标志
-uint32_t CDC_Baud = 0;
-
-
-void USB_EP1_IN(void) {
-	UEP1_T_LEN = 0;
-	UEP1_CTRL = UEP1_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_NAK;
-}
-
-void USB_EP2_IN(void) {
-	UEP2_T_LEN = 0;
-	UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_NAK;
-	UpPoint2_Busy = 0;
-}
-
-void USB_EP2_OUT(void) {
-	if (!U_TOG_OK )
-		return;
-
-	CDC_PendingRxByte = USB_RX_LEN;
-	CDC_CurRxPos = 0;				// Reset Rx pointer
-	// Reject packets by replying NAK, until uart_poll() finishes its job, then it informs the USB peripheral to accept incoming packets
-	UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_R_RES | UEP_R_RES_NAK;
-}
+uint32_t CDC_Baud = 0;		// The baud rate
 
 void CDC_InitBaud(void) {
 	LineCoding[0] = 0x00;
@@ -67,13 +50,36 @@ void CDC_SetBaud(void) {
 		CDC_Baud = 57600;
 }
 
+void USB_EP1_IN(void) {
+	UEP1_T_LEN = 0;
+	UEP1_CTRL = UEP1_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_NAK;
+}
+
+void USB_EP2_IN(void) {
+	UEP2_T_LEN = 0;
+	UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_NAK;
+	CDC_Tx_Busy = 0;
+}
+
+void USB_EP2_OUT(void) {
+	if (!U_TOG_OK )
+		return;
+
+	CDC_Rx_Pending = USB_RX_LEN;
+	CDC_Rx_CurPos = 0;				// Reset Rx pointer
+	// Reject packets by replying NAK, until uart_poll() finishes its job, then it informs the USB peripheral to accept incoming packets
+	UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_R_RES | UEP_R_RES_NAK;
+}
+
 void CDC_PutChar(uint8_t tdata) {
-	Receive_Uart_Buf[Uart_Input_Point++] = tdata;
-	UartByteCount++;					//当前缓冲区剩余待取字节数
-	if(Uart_Input_Point>=UART_REV_LEN)
-	{
-		Uart_Input_Point = 0;
+	// Add new data to CDC_PutCharBuf
+	CDC_PutCharBuf[CDC_PutCharBuf_Last++] = tdata;
+	if(CDC_PutCharBuf_Last >= CDC_PUTCHARBUF_LEN) {
+		// Rotate the tail to the beginning of the buffer
+		CDC_PutCharBuf_Last = 0;
 	}
+
+	CDC_PutCharBuf_Count++;
 }
 
 void CDC_Puts(char *str) {
@@ -81,33 +87,35 @@ void CDC_Puts(char *str) {
 		CDC_PutChar(*(str++));
 }
 
-void usb_poll()
-{
+// Handles CDC_PutCharBuf and IN transfer
+void CDC_USB_Poll() {
 	uint8_t length;
 	static uint8_t Uart_Timeout = 0;
-	if(UsbConfig)
-	{
-		if(UartByteCount)
+
+	if(UsbConfig) {
+		if(CDC_PutCharBuf_Count)
 			Uart_Timeout++;
-		if(!UpPoint2_Busy)   //端点不繁忙（空闲后的第一包数据，只用作触发上传）
-		{
-			length = UartByteCount;
-			if(length>0)
-			{
-				if(length>39 || Uart_Timeout>100)
-				{
+
+		if(!CDC_Tx_Busy) {   //端点不繁忙（空闲后的第一包数据，只用作触发上传）
+			if(CDC_PutCharBuf_Count>0) {
+				if(CDC_PutCharBuf_Count>39 || Uart_Timeout>100) {
 					Uart_Timeout = 0;
-					if(Uart_Output_Point+length>UART_REV_LEN)
-						length = UART_REV_LEN-Uart_Output_Point;
-					UartByteCount -= length;
-					//写上传端点
-					memcpy(EP2_TX_BUF, &Receive_Uart_Buf[Uart_Output_Point],length);
-					Uart_Output_Point+=length;
-					if(Uart_Output_Point>=UART_REV_LEN)
-						Uart_Output_Point = 0;
-					UEP2_T_LEN = length;													//预使用发送长度一定要清空
-					UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_ACK;			//应答ACK
-					UpPoint2_Busy = 1;
+
+					length = CDC_PutCharBuf_Count;
+					if(CDC_PutCharBuf_First+length > CDC_PUTCHARBUF_LEN) {
+						length = CDC_PUTCHARBUF_LEN - CDC_PutCharBuf_First;
+					}
+					CDC_PutCharBuf_Count -= length;
+
+					memcpy(EP2_TX_BUF, &CDC_PutCharBuf[CDC_PutCharBuf_First], length);
+
+					CDC_PutCharBuf_First += length;
+					if(CDC_PutCharBuf_First>=CDC_PUTCHARBUF_LEN)
+						CDC_PutCharBuf_First = 0;
+
+					UEP2_T_LEN = length;
+					UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_ACK;	// ACK next IN transfer
+					CDC_Tx_Busy = 1;
 				}
 			}
 		}
@@ -115,10 +123,10 @@ void usb_poll()
 }
 
 
-void uart_poll() {
+void CDC_UART_Poll() {
 	uint8_t cur_byte;
-	static uint8_t former_data = 0; // Previous byte
-	static uint8_t cdc_rx_state = 0;
+	static uint8_t former_data = 0;		// Previous byte
+	static uint8_t cdc_rx_state = 0;	// Rx processing state machine
 
 	/*
 	 *	I2C Tx:
@@ -127,7 +135,7 @@ void uart_poll() {
 	 *	I2C Rx:
 	 *		Inapplicable
 	 *	SPI Tx, Rx:
-	 *		bit7: If set, CS remains low after this transfer
+	 *		bit7: If set, CS remains low after this transfer, otherwise CS becomes high after transfer
 	 *		rest bits: Unused
 	 */
 	static uint8_t dontstop = 0;
@@ -140,8 +148,8 @@ void uart_poll() {
 	static uint8_t i2c_error_no = 0;
 
 	// If there are data pending
-	if(CDC_PendingRxByte) {
-		cur_byte = EP2_RX_BUF[CDC_CurRxPos++];
+	if(CDC_Rx_Pending) {
+		cur_byte = EP2_RX_BUF[CDC_Rx_CurPos++];
 
 		if(cdc_rx_state == CDC_STATE_IDLE) {
 			if(cur_byte == 'Q')	{
@@ -291,6 +299,8 @@ void uart_poll() {
 				frame_len = 0;
 				frame_sent = 0;
 				cdc_rx_state = CDC_STATE_IDLE;
+
+				CDC_Puts("OK\r\n");
 			}
 		} else if (cdc_rx_state == CDC_STATE_SPI_RXING) {
 			frame_len = cur_byte & 0x3F;
@@ -316,9 +326,9 @@ void uart_poll() {
 
 		former_data = cur_byte;
 
-		CDC_PendingRxByte--;
+		CDC_Rx_Pending--;
 
-		if(CDC_PendingRxByte == 0)
+		if(CDC_Rx_Pending == 0)
 			UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_R_RES | UEP_R_RES_ACK;
 	} // if(CDC_PendingRxByte)
 }
