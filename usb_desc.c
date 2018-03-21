@@ -6,14 +6,14 @@
 code const uint8_t DevDesc[] = {	
 	USB_DESCSIZE_DEVICE,	// Total length
 	0x01,				// Type: Device Descriptor
-	0x10, 0x01,	// USB Spec., 0x0110 -> USB 1.1
+	0x10, 0x01,			// USB Spec., 0x0110 -> USB 1.1
 	0x00,				// Class code, 00 - each interface defines its own class
 	0x00,				// Device Subclass
 	0x00,				// Device Protocol
 	8,					// Max packet size
-	0x86, 0x1a,	// VID	0x413d
-	0x22, 0x57,	// PID	0x2107
-	0x00, 0x01,	// Device release number in BCD
+	0x86, 0x1a,			// VID	LLHH
+	0x22, 0x57,			// PID	LLHH
+	0x00, 0x01,			// Device release number in BCD
 	0x02,				// Manufactor, index of string descriptor
 	0x01,				// Product string descriptor ID
 	0x00,				// Serial number (String descriptor ID) 
@@ -51,21 +51,43 @@ code const uint8_t CfgDesc[] =
 	0x00,				// Interface ID
 	0x00,				// Alternate setting
 	0x01,				// Number of Endpoints
-	0x02,				// Interface class code
+	0x02,				// Interface class code - Communication Interface Class
 	0x02,				// Subclass code - Abstract Control Model
 	0x01,				// Protocol code - AT Command V.250 protocol
 	0x00,				// Index of corresponding string descriptor (On Windows, it is called "Bus reported device description")
 
 	// Header Functional descriptor (CDC)
-	0x05,				// Length of the descriptor
+	5,					// Length of the descriptor
 	0x24,				// bDescriptortype, CS_INTERFACE
 	0x00,				// bDescriptorsubtype, HEADER
 	0x10,0x01,			// bcdCDC
 
-	//
-	0x05,0x24,0x01,0x00,0x00,								 //管理描述符(没有数据类接口) 03 01
-	0x04,0x24,0x02,0x02,									  //支持Set_Line_Coding、Set_Control_Line_State、Get_Line_Coding、Serial_State
-	0x05,0x24,0x06,0x00,0x01,								 //编号为0的CDC接口;编号1的数据类接口
+	// Call Management Functional Descriptor (CDC)
+	5,					// Length of the descriptor
+	0x24,				// bDescriptortype, CS_INTERFACE
+	0x01,				// bDescriptorsubtype, Call Management Functional Descriptor
+	0x00,				// bmCapabilities
+	// Bit0: Does not handle call management
+	// Bit1: Call Management over Comm Class interface
+	0x00,				// Data Interfaces
+
+	// Abstract Control Management (CDC)
+	4,					// Length of the descriptor
+	0x24,				// bDescriptortype, CS_INTERFACE
+	0x02,				// bDescriptorsubtype, Abstract Control Management
+	0x02,				// bmCapabilities
+	// Bit0: CommFeature
+	// Bit1: LineStateCoding
+	// Bit2: SendBreak
+	// Bit3: NetworkConnection
+	// 支持Set_Line_Coding、Set_Control_Line_State、Get_Line_Coding、Serial_State
+
+	// Union Functional Descriptor (CDC)
+	5,					// Length of the descriptor
+	0x24,				// bDescriptortype, CS_INTERFACE
+	0x06,				// bDescriptorSubtype: Union func desc
+	0x00,				// bMasterInterface: Communication class interface
+	0x01,				// bSlaveInterface0: Data Class Interface
 
 	// EndPoint descriptor (CDC Upload, Interrupt)
 	7,					// Length of the descriptor
