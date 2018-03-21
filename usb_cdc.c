@@ -272,7 +272,12 @@ void uart_poll() {
 			// So we always set CS to L here
 			SPI_SetCS(0);
 
-			cdc_rx_state = CDC_STATE_SPI_TXING;
+			// If frame_len == 0, this command will only set CS to L
+			if (frame_len == 0){
+				cdc_rx_state = CDC_STATE_IDLE;
+			} else {
+				cdc_rx_state = CDC_STATE_SPI_TXING;
+			}
 		} else if (cdc_rx_state == CDC_STATE_SPI_TXING) {
 			SPI_MasterData(cur_byte);
 
@@ -291,13 +296,18 @@ void uart_poll() {
 			frame_len = cur_byte & 0x3F;
 			dontstop = cur_byte & CDC_FLAG_NOSTOP;
 
-			// SPI Rx must follow a Tx or Rx, therefore at this moment, normally CS should be L
-			while(frame_len--) {
-				CDC_PutChar(SPI_MasterData(0xFF));
-			}
+			// If frame_len == 0, this command will only set CS to H
+			if (frame_len > 0) {
+				// SPI Rx must follow a Tx or Rx, therefore at this moment, normally CS should be L
+				while(frame_len--) {
+					CDC_PutChar(SPI_MasterData(0xFF));
+				}
 
-			if (!dontstop){
-				// Set CS to H, terminate this transfer
+				if (!dontstop){
+					// Set CS to H, terminate this transfer
+					SPI_SetCS(1);
+				}
+			} else {
 				SPI_SetCS(1);
 			}
 
