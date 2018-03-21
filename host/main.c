@@ -21,7 +21,7 @@ int main(int argc, const char** argv) {
 	printf("Chip ID = %x\n", SPI_Flash25_ReadID(hCom));
 
 	unsigned char* src = (unsigned char*)malloc(0x200000);
-	FILE *file = fopen("D:\\Administrator\\Desktop\\rikka.png", "rb");
+	FILE *file = fopen("rikka.png", "rb");
 	fseek(file, 0L, SEEK_END);
 	long src_len = ftell(file);
 	rewind(file);

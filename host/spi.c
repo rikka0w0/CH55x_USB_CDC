@@ -1,6 +1,8 @@
 #include "spi.h"
 #include "rs232.h"
 
+#include <string.h>
+
 #define SPI_SEGMENT_MAXLEN 32
 #define SPI_REPLY_MAXLEN 32
 
