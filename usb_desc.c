@@ -77,7 +77,8 @@ code const uint8_t CfgDesc[] =
 	0x02,				// bDescriptorsubtype, Abstract Control Management
 	0x02,				// bmCapabilities
 	// Bit0: CommFeature
-	// Bit1: LineStateCoding
+	// Bit1: LineStateCoding  Device supports the request combination of
+	// Set_Line_Coding,	Set_Control_Line_State, Get_Line_Coding, and the notification Serial_State.
 	// Bit2: SendBreak
 	// Bit3: NetworkConnection
 	// Ö§³ÖSet_Line_Coding¡¢Set_Control_Line_State¡¢Get_Line_Coding¡¢Serial_State
@@ -96,7 +97,7 @@ code const uint8_t CfgDesc[] =
 	0x03,				// Attributes:
 						// D1:0 Transfer type: 00 = Control 01 = Isochronous 10 = Bulk 11 = Interrupt
 						// 			The following only apply to isochronous endpoints. Else set to 0.
-						// D3:2 Synchronisation Type: 00 = No Synchronisation 01 = Asynchronous 10 = Adaptive 11 = Synchronous
+						// D3:2 Synchronization Type: 00 = No Synchronization 01 = Asynchronous 10 = Adaptive 11 = Synchronous
 						// D5:4	Usage Type: 00 = Data endpoint 01 = Feedback endpoint 10 = Implicit feedback Data endpoint 11 = Reserved
 						// D7:6 = 0
 	0x10, 0x00,			// Maximum packet size can be handled
@@ -120,7 +121,7 @@ code const uint8_t CfgDesc[] =
 	0x02,				// Attributes:
 						// D1:0 Transfer type: 00 = Control 01 = Isochronous 10 = Bulk 11 = Interrupt
 						// 			The following only apply to isochronous endpoints. Else set to 0.
-						// D3:2 Synchronisation Type: 00 = No Synchronisation 01 = Asynchronous 10 = Adaptive 11 = Synchronous
+						// D3:2 Synchronization Type: 00 = No Synchronization 01 = Asynchronous 10 = Adaptive 11 = Synchronous
 						// D5:4	Usage Type: 00 = Data endpoint 01 = Feedback endpoint 10 = Implicit feedback Data endpoint 11 = Reserved
 						// D7:6 = 0
 	0x40, 0x00,			// Maximum packet size can be handled
@@ -133,7 +134,7 @@ code const uint8_t CfgDesc[] =
 	0x02,				// Attributes:
 						// D1:0 Transfer type: 00 = Control 01 = Isochronous 10 = Bulk 11 = Interrupt
 						// 			The following only apply to isochronous endpoints. Else set to 0.
-						// D3:2 Synchronisation Type: 00 = No Synchronisation 01 = Asynchronous 10 = Adaptive 11 = Synchronous
+						// D3:2 Synchronization Type: 00 = No Synchronization 01 = Asynchronous 10 = Adaptive 11 = Synchronous
 						// D5:4	Usage Type: 00 = Data endpoint 01 = Feedback endpoint 10 = Implicit feedback Data endpoint 11 = Reserved
 						// D7:6 = 0
 	0x40, 0x00,			// Maximum packet size can be handled

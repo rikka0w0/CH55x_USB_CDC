@@ -3,6 +3,7 @@
 #include "usb_cdc.h"
 #include <string.h>	// For memcpy()
 
+#include "bootloader.h"
 #include "ch554_platform.h"
 
 // Used in SET_FEATURE and CLEAR_FEATURE 
@@ -132,38 +133,42 @@ void USB_EP0_SETUP(void) {
 		}	// if ((UsbSetupBuf->bRequestType & USB_REQ_TYP_MASK) == USB_REQ_TYP_STANDARD)
 		
 		else if ((UsbSetupBuf->bRequestType & USB_REQ_TYP_MASK) == USB_REQ_TYP_CLASS) {
-			switch( SetupReq ) {
-				case 0x01:		// GetReport
-					break;
-				case 0x02:		// GetIdle
-					break;	
-				case 0x03:		// GetProtocol
-					break;				
-				case 0x09:		// SetReport										
-					break;
-				case 0x0A:		// SetIdle
-					break;	
-				case 0x0B:		// SetProtocol
-					break;
-
-				// USB CDC
-				case GET_LINE_CODING:   //0x21  currently configured
-					pDescr = LineCoding;
-					len = LINECODING_SIZE;
-					len = SetupLen >= DEFAULT_ENDP0_SIZE ? DEFAULT_ENDP0_SIZE : SetupLen;  // 本次传输长度
-					memcpy(Ep0Buffer, pDescr, len);
-					SetupLen -= len;
-					pDescr += len;
-					break;
-				case SET_CONTROL_LINE_STATE:  //0x22  generates RS-232/V.24 style control signals
-					break;
-				case SET_LINE_CODING:	  //0x20  Configure
-					break;
-				default:
-					len = 0xFF;
-					break;
+			// USB CDC
+			if (UsbSetupBuf->bRequestType & USB_REQ_TYP_IN) {
+				// Device -> Host
+				switch( SetupReq ) {
+					//case SERIAL_STATE:   //0x20
+						// Return CTS DTR state
+						// Return format: bit4:0 [RING BREAK DSR DCD]
+						//break;
+					case GET_LINE_CODING:   //0x21  currently configured
+						pDescr = LineCoding;
+						len = LINECODING_SIZE;
+						len = SetupLen >= DEFAULT_ENDP0_SIZE ? DEFAULT_ENDP0_SIZE : SetupLen;  // 本次传输长度
+						memcpy(Ep0Buffer, pDescr, len);
+						SetupLen -= len;
+						pDescr += len;
+						break;
+					default:
+						len = 0xFF;
+						break;
+				}
+			} else {	// USB_REQ_TYP_OUT
+				// Host -> Device
+				switch( SetupReq ) {
+					case SET_LINE_CODING: //0x20
+						break;
+					case SET_CONTROL_LINE_STATE:  //0x22  generates RS-232/V.24 style control signals
+						// 0x00 0x0[0 0 RTS DTR]
+						break;
+					//case SEND_BREAK:
+						//break;
+					default:
+						len = 0xFF;
+						break;
+				}
 			}
-		}
+		} // else if ((UsbSetupBuf->bRequestType & USB_REQ_TYP_MASK) == USB_REQ_TYP_CLASS)
 		
 		// Process class requests and vendor requests here (if necessary)
 	} else {

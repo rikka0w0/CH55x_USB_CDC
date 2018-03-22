@@ -17,8 +17,8 @@ xdatabuf(LINECODING_ADDR, LineCoding, LINECODING_SIZE);
 idata uint8_t  CDC_PutCharBuf[CDC_PUTCHARBUF_LEN];	// The buffer for CDC_PutChar
 idata volatile uint8_t CDC_PutCharBuf_Last = 0;		// Point to the last char in the buffer
 idata volatile uint8_t CDC_PutCharBuf_First = 0;	// Point to the first char in the buffer
-idata volatile uint8_t CDC_PutCharBuf_Count = 0;	// The length of data stored in the buffer
 idata volatile uint8_t CDC_Tx_Busy  = 0;
+
 
 // CDC Rx
 idata volatile uint8_t CDC_Rx_Pending = 0;	// Number of bytes need to be processed before accepting more USB packets
@@ -56,6 +56,8 @@ void USB_EP1_IN(void) {
 }
 
 void USB_EP2_IN(void) {
+
+
 	UEP2_T_LEN = 0;
 	UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_NAK;
 	CDC_Tx_Busy = 0;
@@ -78,8 +80,6 @@ void CDC_PutChar(uint8_t tdata) {
 		// Rotate the tail to the beginning of the buffer
 		CDC_PutCharBuf_Last = 0;
 	}
-
-	CDC_PutCharBuf_Count++;
 }
 
 void CDC_Puts(char *str) {
@@ -89,36 +89,38 @@ void CDC_Puts(char *str) {
 
 // Handles CDC_PutCharBuf and IN transfer
 void CDC_USB_Poll() {
-	uint8_t length;
-	static uint8_t Uart_Timeout = 0;
+	static uint8_t usb_frame_count = 0;
+	uint8_t usb_tx_len;
 
 	if(UsbConfig) {
-		if(CDC_PutCharBuf_Count)
-			Uart_Timeout++;
+		if(usb_frame_count++ > 100) {
+			usb_frame_count = 0;
 
-		if(!CDC_Tx_Busy) {   //端点不繁忙（空闲后的第一包数据，只用作触发上传）
-			if(CDC_PutCharBuf_Count>0) {
-				if(CDC_PutCharBuf_Count>39 || Uart_Timeout>100) {
-					Uart_Timeout = 0;
+			if(!CDC_Tx_Busy) {
+				if(CDC_PutCharBuf_First == CDC_PutCharBuf_Last) {
+					// Nothing to send
+					return;
+				} else {
+						if(CDC_PutCharBuf_First > CDC_PutCharBuf_Last) {
+							// Rollback
+							usb_tx_len = CDC_PUTCHARBUF_LEN - CDC_PutCharBuf_First;
+						} else {
+							usb_tx_len = CDC_PutCharBuf_Last - CDC_PutCharBuf_First;
+						}
 
-					length = CDC_PutCharBuf_Count;
-					if(CDC_PutCharBuf_First+length > CDC_PUTCHARBUF_LEN) {
-						length = CDC_PUTCHARBUF_LEN - CDC_PutCharBuf_First;
-					}
-					CDC_PutCharBuf_Count -= length;
+						CDC_Tx_Busy = 1;
+						memcpy(EP2_TX_BUF, &CDC_PutCharBuf[CDC_PutCharBuf_First], usb_tx_len);
+						UEP2_T_LEN = usb_tx_len;
 
-					memcpy(EP2_TX_BUF, &CDC_PutCharBuf[CDC_PutCharBuf_First], length);
+						CDC_PutCharBuf_First += usb_tx_len;
+						if(CDC_PutCharBuf_First>=CDC_PUTCHARBUF_LEN)
+							CDC_PutCharBuf_First = 0;
 
-					CDC_PutCharBuf_First += length;
-					if(CDC_PutCharBuf_First>=CDC_PUTCHARBUF_LEN)
-						CDC_PutCharBuf_First = 0;
-
-					UEP2_T_LEN = length;
-					UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_ACK;	// ACK next IN transfer
-					CDC_Tx_Busy = 1;
+						UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_ACK;	// ACK next IN transfer
 				}
 			}
 		}
+
 	}
 }
 
