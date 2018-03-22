@@ -58,16 +58,23 @@ err:
 int SPI_Read(HCOM hCom, void* buf, size_t count, char flag) {
 	char* rx_buf = (char*)buf;
 	unsigned char header[2];
+	size_t read;
 	header[0] = 'G';
 	header[1] = SPI_SEGMENT_MAXLEN | SPI_NO_STOP;
 
 	while (count > SPI_SEGMENT_MAXLEN) {
 		if (RS232_Write(hCom, header, 2) == -1)
 			goto err;
-		if (RS232_Read(hCom, rx_buf, SPI_SEGMENT_MAXLEN) == -1)
-			goto err;
 
-		rx_buf += SPI_SEGMENT_MAXLEN;
+		read = 0;
+		do {
+			size_t rs232_read_ret = RS232_Read(hCom, rx_buf, SPI_SEGMENT_MAXLEN - read);
+			if (rs232_read_ret == -1)
+				goto err;
+			read += rs232_read_ret;
+			rx_buf += rs232_read_ret;
+		} while (read < SPI_SEGMENT_MAXLEN);
+
 		count -= SPI_SEGMENT_MAXLEN;
 	}
 
@@ -80,8 +87,17 @@ int SPI_Read(HCOM hCom, void* buf, size_t count, char flag) {
 
 		if (RS232_Write(hCom, header, 2) == -1)
 			goto err;
-		if (RS232_Read(hCom, rx_buf, count) == -1)
-			goto err;
+
+		read = 0;
+		do {
+			size_t rs232_read_ret = RS232_Read(hCom, rx_buf, count);
+			if (rs232_read_ret == -1)
+				goto err;
+			read += rs232_read_ret;
+			rx_buf += rs232_read_ret;
+		} while (read < count);
+
+		return 0;
 	}
 
 	return 0;

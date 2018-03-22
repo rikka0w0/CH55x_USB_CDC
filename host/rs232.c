@@ -270,9 +270,11 @@ void RS232_Config(HCOM fd, speed_t baud, unsigned char config) {
 
 	options.c_cflag &= ~CRTSCTS;
 	options.c_cflag |= CREAD | CLOCAL;
-	options.c_iflag &= ~(IXON | IXOFF | IXANY);
-	options.c_iflag &= ~(ICANON | ECHO | ECHOE | ISIG);
+
+	// Put the serial port in raw mode, similar to cfmakeraw
+	options.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
 	options.c_oflag &= ~OPOST;
+	options.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
 	tcsetattr(fd, TCSANOW, &options);
 }
 

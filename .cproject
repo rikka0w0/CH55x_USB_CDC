@@ -17,7 +17,7 @@
 					<folderInfo id="cdt.managedbuild.config.sdcc.exe.release.44050159." name="/" resourcePath="">
 						<toolChain id="cdt.managedbuild.toolchain.sdcc.exe.release.645725452" name="SDCC Tool Chain" superClass="cdt.managedbuild.toolchain.sdcc.exe.release">
 							<targetPlatform archList="all" binaryParser="org.eclipse.cdt.core.ELF" id="cdt.managedbuild.target.sdcc.platform.exe.release.1705936550" name="Release Platform" osList="solaris,linux,hpux,aix,qnx,win32" superClass="cdt.managedbuild.target.sdcc.platform.exe.release"/>
-							<builder buildPath="${workspace_loc:/USB}/Release" id="cdt.managedbuild.target.sdcc.builder.exe.release.1643369830" keepEnvironmentInBuildfile="false" managedBuildOn="true" name="Sdcc Make" superClass="cdt.managedbuild.target.sdcc.builder.exe.release"/>
+							<builder autoBuildTarget="" buildPath="" cleanBuildTarget="" enableAutoBuild="false" enableCleanBuild="true" enabledIncrementalBuild="true" id="cdt.managedbuild.target.sdcc.builder.exe.release.1643369830" incrementalBuildTarget="" keepEnvironmentInBuildfile="false" managedBuildOn="true" name="Sdcc Make" superClass="cdt.managedbuild.target.sdcc.builder.exe.release"/>
 							<tool command="sdcc -c --stack-auto --xram-loc 0x100" id="cdt.managedbuild.tool.sdcc.c.compiler.exe.release.789202600" name="SDCC Compiler" superClass="cdt.managedbuild.tool.sdcc.c.compiler.exe.release">
 								<option id="sdcc.c.compiler.option.include.paths.1504516582" name="Include paths (-I)" superClass="sdcc.c.compiler.option.include.paths" useByScannerDiscovery="false" valueType="includePath">
 									<listOptionValue builtIn="false" value="&quot;D:\Software\Develop\sdcc\include&quot;"/>
