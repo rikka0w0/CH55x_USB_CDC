@@ -58,9 +58,10 @@ void USB_EP1_IN(void) {
 void USB_EP2_IN(void) {
 	UEP2_T_LEN = 0;
 	if (CDC_Tx_Full) {
-		// Send a zero-length-packet to end this transfer
+		// Send a zero-length-packet(ZLP) to end this transfer
 		UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_ACK;	// ACK next IN transfer
 		CDC_Tx_Full = 0;
+		// CDC_Tx_Busy remains set until the next ZLP sent to the host
 	} else {
 		UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_NAK;
 		CDC_Tx_Busy = 0;
@@ -118,8 +119,8 @@ void CDC_USB_Poll() {
 						memcpy(EP2_TX_BUF, &CDC_PutCharBuf[CDC_PutCharBuf_First], usb_tx_len);
 
 						// length (the first byte in the buffer, the last byte to send), if any
-						if (CDC_PutCharBuf_First > 0)
-							memcpy(&EP2_TX_BUF[usb_tx_len], CDC_PutCharBuf, CDC_PutCharBuf_First);
+						if (CDC_PutCharBuf_Last > 0)
+							memcpy(&EP2_TX_BUF[usb_tx_len], CDC_PutCharBuf, CDC_PutCharBuf_Last);
 
 						// Send the entire buffer
 						UEP2_T_LEN = CDC_PUTCHARBUF_LEN;
@@ -133,22 +134,36 @@ void CDC_USB_Poll() {
 					// Otherwise buffer is empty, nothing to send
 					return;
 				} else {
-						if(CDC_PutCharBuf_First > CDC_PutCharBuf_Last) {
-							// Rollback
-							usb_tx_len = CDC_PUTCHARBUF_LEN - CDC_PutCharBuf_First;
-						} else {
-							usb_tx_len = CDC_PutCharBuf_Last - CDC_PutCharBuf_First;
+					CDC_Tx_Busy = 1;
+
+					// CDC_PutChar() is the only way to insert into CDC_PutCharBuf, it detects buffer overflow and notify the CDC_USB_Poll().
+					// So in this condition the buffer can not be full, so we don't have to send a zero-length-packet after this.
+
+					if(CDC_PutCharBuf_First > CDC_PutCharBuf_Last) { // Rollback
+						// length (the first byte to send, the end of the buffer)
+						usb_tx_len = CDC_PUTCHARBUF_LEN - CDC_PutCharBuf_First;
+						memcpy(EP2_TX_BUF, &CDC_PutCharBuf[CDC_PutCharBuf_First], usb_tx_len);
+
+						// length (the first byte in the buffer, the last byte to send), if any
+						if (CDC_PutCharBuf_Last > 0) {
+							memcpy(&EP2_TX_BUF[usb_tx_len], CDC_PutCharBuf, CDC_PutCharBuf_Last);
+							usb_tx_len += CDC_PutCharBuf_Last;
 						}
 
-						CDC_Tx_Busy = 1;
-						memcpy(EP2_TX_BUF, &CDC_PutCharBuf[CDC_PutCharBuf_First], usb_tx_len);
 						UEP2_T_LEN = usb_tx_len;
+					} else {
+						usb_tx_len = CDC_PutCharBuf_Last - CDC_PutCharBuf_First;
+						memcpy(EP2_TX_BUF, &CDC_PutCharBuf[CDC_PutCharBuf_First], usb_tx_len);
 
-						CDC_PutCharBuf_First += usb_tx_len;
-						if(CDC_PutCharBuf_First>=CDC_PUTCHARBUF_LEN)
-							CDC_PutCharBuf_First = 0;
+						UEP2_T_LEN = usb_tx_len;
+					}
 
-						UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_ACK;	// ACK next IN transfer
+					CDC_PutCharBuf_First += usb_tx_len;
+					if(CDC_PutCharBuf_First>=CDC_PUTCHARBUF_LEN)
+						CDC_PutCharBuf_First -= CDC_PUTCHARBUF_LEN;
+
+					// ACK next IN transfer
+					UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_ACK;
 				}
 			}
 		}
