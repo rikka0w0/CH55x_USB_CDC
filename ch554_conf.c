@@ -119,7 +119,7 @@ void CH554_Init(void) {
 	I2C_Init();
 	SPI_SetMasterMode3();
 	SPI_SetMasterIOFloat();
-	SPI_SetClockDivider(100);
+	SPI_SetClockDivider(4);
 	
 	USBDevice_Init();
   
