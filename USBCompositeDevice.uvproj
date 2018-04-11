@@ -165,7 +165,7 @@
         </DebugOption>
         <Utilities>
           <Flash1>
-            <UseTargetDll>0</UseTargetDll>
+            <UseTargetDll>1</UseTargetDll>
             <UseExternalTool>0</UseExternalTool>
             <RunIndependent>0</RunIndependent>
             <UpdateFlashBeforeDebugging>0</UpdateFlashBeforeDebugging>
@@ -456,6 +456,11 @@
               <FileName>usb_cdc.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\usb_cdc.c</FilePath>
+            </File>
+            <File>
+              <FileName>spi.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\spi.c</FilePath>
             </File>
           </Files>
         </Group>

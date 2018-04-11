@@ -3,23 +3,22 @@
 #include "ch554_platform.h"
 
 // Device Descriptor
-code const uint8_t DevDesc[] = {	
-	USB_DESCSIZE_DEVICE,	// Total length
-	0x01,				// Type: Device Descriptor
-	0x10, 0x01,			// USB Spec., 0x0110 -> USB 1.1
-	0x00,				// Class code, 00 - each interface defines its own class
-	0x00,				// Device Subclass
-	0x00,				// Device Protocol
-	8,					// Max packet size
-	0x86, 0x1a,			// VID	LLHH
-	0x22, 0x57,			// PID	LLHH
-	0x00, 0x01,			// Device release number in BCD
-	0x02,				// Manufactor, index of string descriptor
-	0x01,				// Product string descriptor ID
-	0x00,				// Serial number (String descriptor ID) 
-	0x01				// Number of available configurations
+code const usb_device_descriptor DevDesc = {
+		USB_UINT8(bLength, USB_DESCSIZE_DEVICE),
+		USB_UINT8(bDescriptorType, USB_DESCR_TYP_DEVICE),	// Type: Device Descriptor
+		USB_UINT16(bcdUSB, 0x0110),				// USB Spec., 0x0110 -> USB 1.1
+		USB_UINT8(bDeviceClass, 0),				// Device defined at interface level
+		USB_UINT8(bDeviceSubClass, 0),
+		USB_UINT8(bDeviceProtocol, 0),
+		USB_UINT8(bMaxPacketSize0, 8),			// Max packet size of EP0
+		USB_UINT16(idVendor, 0x1A86),			// VID
+		USB_UINT16(idProduct, 0x5722),			// PID
+		USB_UINT16(bcdDevice, 0x0100),			// Device release number in BCD
+		USB_UINT8(iManufacturer, 2),			// Manufactor, index of string descriptor
+		USB_UINT8(iProduct, 1),					// Product string descriptor ID
+		USB_UINT8(iSerialNumber, 0),			// Serial number (String descriptor ID)
+		USB_UINT8(bNumConfigurations, 1),		// Number of available configurations
 };
-
 
 // Configuration Descriptor and Interface Descriptor
 code const uint8_t CfgDesc[] =

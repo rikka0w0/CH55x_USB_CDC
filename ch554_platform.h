@@ -132,7 +132,7 @@
 			((uint8_t*)dstAddr)[3] = ((uint8_t*)srcAddr)[3];	\
 	}
 #else
-	#error "QAQ"
+	#error "Little-Endian or Big-Endian?"
 #endif
 
 

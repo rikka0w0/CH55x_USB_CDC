@@ -37,7 +37,7 @@ void USB_EP0_SETUP(void) {
 			case USB_GET_DESCRIPTOR:
 				switch (UsbSetupBuf->wValueH) {
 				case 1:												// Device Descriptor
-					pDescr = (uint8_t*)DevDesc;
+					pDescr = (uint8_t*)&DevDesc;
 					len = USB_DESCSIZE_DEVICE;
 					break;
 				case 2:												// Configure Descriptor
