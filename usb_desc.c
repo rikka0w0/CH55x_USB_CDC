@@ -7,9 +7,9 @@ code const usb_device_descriptor DevDesc = {
 		USB_UINT8(bLength, USB_DESCSIZE_DEVICE),
 		USB_UINT8(bDescriptorType, USB_DESCR_TYP_DEVICE),	// Type: Device Descriptor
 		USB_UINT16(bcdUSB, 0x0110),				// USB Spec., 0x0110 -> USB 1.1
-		USB_UINT8(bDeviceClass, 0),				// Device defined at interface level
-		USB_UINT8(bDeviceSubClass, 0),
-		USB_UINT8(bDeviceProtocol, 0),
+		USB_UINT8(bDeviceClass, 0xEF),				// Device defined at interface level
+		USB_UINT8(bDeviceSubClass, 0x02),
+		USB_UINT8(bDeviceProtocol, 0x01),
 		USB_UINT8(bMaxPacketSize0, 8),			// Max packet size of EP0
 		USB_UINT16(idVendor, 0x1A86),			// VID
 		USB_UINT16(idProduct, 0x5722),			// PID
