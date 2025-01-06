@@ -14,11 +14,15 @@ xdatabuf(LINECODING_ADDR, LineCoding, LINECODING_SIZE);
 #define Device_Version			"1.0.1"
 
 // CDC Tx
-idata uint8_t  CDC_PutCharBuf[CDC_PUTCHARBUF_LEN];	// The buffer for CDC_PutChar
-idata volatile uint8_t CDC_PutCharBuf_Last = 0;		// Point to the last char in the buffer
-idata volatile uint8_t CDC_PutCharBuf_First = 0;	// Point to the first char in the buffer
-idata volatile uint8_t CDC_Tx_Busy  = 0;
-idata volatile uint8_t CDC_Tx_Full = 0;
+idata uint8_t CDC_PutCharBuf[CDC_PUTCHARBUF_LEN];	// The buffer for CDC_PutChar
+idata uint8_t CDC_PutCharBuf_Last = 0;		// Point to the last char in the buffer
+idata uint8_t CDC_PutCharBuf_First = 0;		// Point to the first char in the buffer
+
+/**
+ * When CDC_PutCharBuf_Last=CDC_PutCharBuf_First, a non-zero CDC_Tx_Full indicates a full buffer,
+ * otherwise, the buffer is empty.
+ */
+idata uint8_t CDC_Tx_Full = 0;
 
 // CDC Rx
 idata volatile uint8_t CDC_Rx_Pending = 0;	// Number of bytes need to be processed before accepting more USB packets
@@ -55,19 +59,22 @@ void USB_EP1_IN(void) {
 	UEP1_CTRL = UEP1_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_NAK;
 }
 
+/**
+ * Called after serving an IN transfer. 
+ */
 void USB_EP2_IN(void) {
-	UEP2_T_LEN = 0;
-	if (CDC_Tx_Full) {
+	if (UEP2_T_LEN == CDC_PUTCHARBUF_LEN) {
 		// Send a zero-length-packet(ZLP) to end this transfer
 		UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_ACK;	// ACK next IN transfer
-		CDC_Tx_Full = 0;
-		// CDC_Tx_Busy remains set until the next ZLP sent to the host
 	} else {
 		UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_NAK;
-		CDC_Tx_Busy = 0;
 	}
+	UEP2_T_LEN = 0;
 }
 
+/**
+ * Called after the last OUT transfer. Data is available from the host.
+ */
 void USB_EP2_OUT(void) {
 	if (!U_TOG_OK )
 		return;
@@ -100,7 +107,11 @@ void CDC_Puts(char *str) {
 		CDC_PutChar(*(str++));
 }
 
-// Handles CDC_PutCharBuf and IN transfer
+/**
+ * Prepare data for the next IN transfer, if any.
+ * 
+ * If CDC_PutCharBuf is non-empty, data will be copied to the USB Tx buffer.
+ */
 void CDC_USB_Poll() {
 	static uint8_t usb_frame_count = 0;
 	uint8_t usb_tx_len;
@@ -114,13 +125,12 @@ void CDC_USB_Poll() {
 	else
 		return;
 
-	if (CDC_Tx_Busy)
+	// Sending something, skip buffer filling
+	if (UEP2_CTRL & UEP_T_RES_ACK) 
 		return;
 
 	if (CDC_PutCharBuf_First == CDC_PutCharBuf_Last) {
 		if (CDC_Tx_Full) { // Buffer is full
-			CDC_Tx_Busy = 1;
-
 			// length (the first byte to send, the end of the buffer)
 			usb_tx_len = CDC_PUTCHARBUF_LEN - CDC_PutCharBuf_First;
 			memcpy(EP2_TX_BUF, &CDC_PutCharBuf[CDC_PutCharBuf_First], usb_tx_len);
@@ -128,6 +138,10 @@ void CDC_USB_Poll() {
 			// length (the first byte in the buffer, the last byte to send), if any
 			if (CDC_PutCharBuf_Last > 0)
 				memcpy(&EP2_TX_BUF[usb_tx_len], CDC_PutCharBuf, CDC_PutCharBuf_Last);
+
+			// Since the entire buffer has been pushed to the USB HW Tx buffer,
+			// the buffer is once again empty.
+			CDC_Tx_Full = 0;
 
 			// Send the entire buffer
 			UEP2_T_LEN = CDC_PUTCHARBUF_LEN;
@@ -141,8 +155,6 @@ void CDC_USB_Poll() {
 		// Otherwise buffer is empty, nothing to send
 		return;
 	} else {
-		CDC_Tx_Busy = 1;
-
 		// CDC_PutChar() is the only way to insert into CDC_PutCharBuf, it detects buffer overflow and notify the CDC_USB_Poll().
 		// So in this condition the buffer can not be full, so we don't have to send a zero-length-packet after this.
 
