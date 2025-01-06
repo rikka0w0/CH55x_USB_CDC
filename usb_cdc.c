@@ -105,69 +105,70 @@ void CDC_USB_Poll() {
 	static uint8_t usb_frame_count = 0;
 	uint8_t usb_tx_len;
 
-	if(UsbConfig) {
-		if(usb_frame_count++ > 100) {
-			usb_frame_count = 0;
+	if (!UsbConfig)
+		return;
 
-			if(!CDC_Tx_Busy) {
-				if(CDC_PutCharBuf_First == CDC_PutCharBuf_Last) {
-					if (CDC_Tx_Full) { // Buffer is full
-						CDC_Tx_Busy = 1;
+	// Run every 100 entry of CDC_USB_Poll()
+	if (usb_frame_count++ > 100)
+		usb_frame_count = 0;
+	else
+		return;
 
-						// length (the first byte to send, the end of the buffer)
-						usb_tx_len = CDC_PUTCHARBUF_LEN - CDC_PutCharBuf_First;
-						memcpy(EP2_TX_BUF, &CDC_PutCharBuf[CDC_PutCharBuf_First], usb_tx_len);
+	if (CDC_Tx_Busy)
+		return;
 
-						// length (the first byte in the buffer, the last byte to send), if any
-						if (CDC_PutCharBuf_Last > 0)
-							memcpy(&EP2_TX_BUF[usb_tx_len], CDC_PutCharBuf, CDC_PutCharBuf_Last);
+	if (CDC_PutCharBuf_First == CDC_PutCharBuf_Last) {
+		if (CDC_Tx_Full) { // Buffer is full
+			CDC_Tx_Busy = 1;
 
-						// Send the entire buffer
-						UEP2_T_LEN = CDC_PUTCHARBUF_LEN;
-						UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_ACK;	// ACK next IN transfer
+			// length (the first byte to send, the end of the buffer)
+			usb_tx_len = CDC_PUTCHARBUF_LEN - CDC_PutCharBuf_First;
+			memcpy(EP2_TX_BUF, &CDC_PutCharBuf[CDC_PutCharBuf_First], usb_tx_len);
 
-						// A 64-byte packet is going to be sent, according to USB specification, USB uses a less-than-max-length packet to demarcate an end-of-transfer
-						// As a result, we need to send a zero-length-packet.
-						return;
-					}
+			// length (the first byte in the buffer, the last byte to send), if any
+			if (CDC_PutCharBuf_Last > 0)
+				memcpy(&EP2_TX_BUF[usb_tx_len], CDC_PutCharBuf, CDC_PutCharBuf_Last);
 
-					// Otherwise buffer is empty, nothing to send
-					return;
-				} else {
-					CDC_Tx_Busy = 1;
+			// Send the entire buffer
+			UEP2_T_LEN = CDC_PUTCHARBUF_LEN;
+			UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_ACK;	// ACK next IN transfer
 
-					// CDC_PutChar() is the only way to insert into CDC_PutCharBuf, it detects buffer overflow and notify the CDC_USB_Poll().
-					// So in this condition the buffer can not be full, so we don't have to send a zero-length-packet after this.
-
-					if(CDC_PutCharBuf_First > CDC_PutCharBuf_Last) { // Rollback
-						// length (the first byte to send, the end of the buffer)
-						usb_tx_len = CDC_PUTCHARBUF_LEN - CDC_PutCharBuf_First;
-						memcpy(EP2_TX_BUF, &CDC_PutCharBuf[CDC_PutCharBuf_First], usb_tx_len);
-
-						// length (the first byte in the buffer, the last byte to send), if any
-						if (CDC_PutCharBuf_Last > 0) {
-							memcpy(&EP2_TX_BUF[usb_tx_len], CDC_PutCharBuf, CDC_PutCharBuf_Last);
-							usb_tx_len += CDC_PutCharBuf_Last;
-						}
-
-						UEP2_T_LEN = usb_tx_len;
-					} else {
-						usb_tx_len = CDC_PutCharBuf_Last - CDC_PutCharBuf_First;
-						memcpy(EP2_TX_BUF, &CDC_PutCharBuf[CDC_PutCharBuf_First], usb_tx_len);
-
-						UEP2_T_LEN = usb_tx_len;
-					}
-
-					CDC_PutCharBuf_First += usb_tx_len;
-					if(CDC_PutCharBuf_First>=CDC_PUTCHARBUF_LEN)
-						CDC_PutCharBuf_First -= CDC_PUTCHARBUF_LEN;
-
-					// ACK next IN transfer
-					UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_ACK;
-				}
-			}
+			// A 64-byte packet is going to be sent, according to USB specification, USB uses a less-than-max-length packet to demarcate an end-of-transfer
+			// As a result, we need to send a zero-length-packet.
+			return;
 		}
 
+		// Otherwise buffer is empty, nothing to send
+		return;
+	} else {
+		CDC_Tx_Busy = 1;
+
+		// CDC_PutChar() is the only way to insert into CDC_PutCharBuf, it detects buffer overflow and notify the CDC_USB_Poll().
+		// So in this condition the buffer can not be full, so we don't have to send a zero-length-packet after this.
+
+		if(CDC_PutCharBuf_First > CDC_PutCharBuf_Last) { // Rollback
+			// length (the first byte to send, the end of the buffer)
+			usb_tx_len = CDC_PUTCHARBUF_LEN - CDC_PutCharBuf_First;
+			memcpy(EP2_TX_BUF, &CDC_PutCharBuf[CDC_PutCharBuf_First], usb_tx_len);
+
+			// length (the first byte in the buffer, the last byte to send), if any
+			if (CDC_PutCharBuf_Last > 0) {
+				memcpy(&EP2_TX_BUF[usb_tx_len], CDC_PutCharBuf, CDC_PutCharBuf_Last);
+				usb_tx_len += CDC_PutCharBuf_Last;
+			}
+		} else {
+			usb_tx_len = CDC_PutCharBuf_Last - CDC_PutCharBuf_First;
+			memcpy(EP2_TX_BUF, &CDC_PutCharBuf[CDC_PutCharBuf_First], usb_tx_len);
+		}
+
+		UEP2_T_LEN = usb_tx_len;
+
+		CDC_PutCharBuf_First += usb_tx_len;
+		if(CDC_PutCharBuf_First >= CDC_PUTCHARBUF_LEN)
+			CDC_PutCharBuf_First -= CDC_PUTCHARBUF_LEN;
+
+		// ACK next IN transfer
+		UEP2_CTRL = UEP2_CTRL & ~ MASK_UEP_T_RES | UEP_T_RES_ACK;
 	}
 }
 
